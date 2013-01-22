@@ -42,7 +42,7 @@ class FitBitSplunk():
         with open(file_path, 'rb') as input:
             return pickle.load(input)
 
-    def one_day_to_key_value(self, day, output_path=None):
+    def one_day_to_key_value(self, day, output_path=None, append=True):
         """Takes the fitbit connection, connects to Fitbit and retrieves
         intraday values for day.
 
@@ -55,7 +55,10 @@ class FitBitSplunk():
         user_timezone = pytz.timezone(self.user_profile['timezone'])
 
         if output_path:
-            out_file = open(output_path, 'w')
+            if append:
+                out_file = open(output_path, 'a')
+            else:
+                out_file = open(output_path, 'w')
         else:
             out_file = None
         one_day = self.get_one_day(day)  # Uncomment to connect to Fitbit
@@ -69,10 +72,12 @@ class FitBitSplunk():
             dt = datetime.datetime.combine(date, time.time())
             dt_str = dt.replace(tzinfo=user_timezone).isoformat()
             logline = '%s, steps=%s' % (dt_str, minute['value'])
-            logging.info(logline)
             if out_file:
                 out_file.write("%s\n" % logline)
-        out_file.close()
+            else:
+                logging.info(logline)
+        if out_file:
+            out_file.close()
 
     def get_last_sync_time(self):
         """Gets the most recent sync datetime
