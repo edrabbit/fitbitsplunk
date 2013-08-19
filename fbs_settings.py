@@ -1,6 +1,8 @@
 CONSUMER_KEY = ''
 CONSUMER_SECRET = ''
 
-# TODO(ed): Provide a way to get these values
+# TODO(ed): Remove user_key and user_secret and provide a way to get them
 USER_KEY = ''
 USER_SECRET = ''
+
+DL_MARKER = './last_download'
