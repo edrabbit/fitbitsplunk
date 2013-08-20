@@ -6,6 +6,7 @@ import os
 import pytz
 
 import pickle  # For development
+import tailer
 
 import fbs_settings
 import fitbit
@@ -21,6 +22,13 @@ class FitBitSplunk():
     def get_profile(self):
         user = self.fb.user_profile_get()
         self.user_profile = user['user']
+
+    def get_join_date(self):
+        if not self.user_profile:
+            self.get_profile()
+        dt = datetime.datetime.strptime(
+            self.user_profile['memberSince'], '%Y-%m-%d')
+        return dt
 
     def login(self, consumer_key, consumer_secret, user_key, user_secret,
               get_profile=True):
@@ -44,12 +52,11 @@ class FitBitSplunk():
                % (self.fb.API_ENDPOINT, self.fb.API_VERSION, '-',
                activity, start_date, end_date, format))
         summary = self.fb.make_request(url=url)
-        return self._sort_summary_into_dates(summary['activities-%s' % activity])
+        return self._sort_summary_into_dates(
+            summary['activities-%s' % activity])
 
     def _sort_summary_into_dates(self, summary):
-        # Summary is a list
-        # Make sure dates are in order
-        #sd = sorted(summary, key=lambda k: k['dateTime'])
+        # Summary is a list, make sure dates are in order
         foo = {}
         for x in summary:
             foo[x['dateTime']] = x['value']
@@ -88,9 +95,7 @@ class FitBitSplunk():
                 out_file = open(output_path, 'w')
         else:
             out_file = None
-        one_day = self.get_one_day(day)  # Uncomment to connect to Fitbit
-    #    one_day = load_one_day_from_file('%s/%s' % (os.getcwd(),
-    #                                     '2013-01-19.pk'))  # for dev
+        one_day = self.get_one_day(day)
 
         date = datetime.datetime.strptime(day, '%Y-%m-%d')
         for minute in one_day['activities-steps-intraday']['dataset']:
@@ -117,6 +122,15 @@ class FitBitSplunk():
         self.last_sync = last_sync_dt
         return last_sync_dt
 
+    def get_last_log_date(self, logfile):
+        last_line = tailer.tail(open(logfile), 1)
+        if last_line:
+            last_line = last_line[0]
+            return last_line.split(', ')[0].split('T')[0]
+        else:
+            return None
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Fetch Fitbit data via API')
@@ -138,12 +152,34 @@ if __name__ == '__main__':
     fbs = FitBitSplunk()
     fbs.login(args.consumer_key, args.consumer_secret,
               args.user_key, args.user_secret)
-    last_sync = fbs.get_last_sync_time()
+
 
     # TODO(ed): Modify these based on sync date or assume user knows best?
-    # Maybe this should also compare end_date to last sync date?
-    start_date = datetime.datetime.strptime(args.start_date, '%Y-%m-%d')
-    end_date = datetime.datetime.strptime(args.end_date, '%Y-%m-%d')
+    # If a start or end date is not specified, use Fitbit's memberSince
+    # date and last sync date respectively
+
+    last_sync = fbs.get_last_sync_time()
+    logging.debug('last sync time was %s' % last_sync)
+
+    if not args.start_date:
+        last_log_date = fbs.get_last_log_date(args.output)
+        if last_log_date:
+            start_date = datetime.datetime.strptime(last_log_date, '%Y-%m-%d')
+            start_date = start_date + datetime.timedelta(days=1)
+        else:
+            start_date = fbs.get_join_date()
+    else:
+        start_date = datetime.datetime.strptime(args.start_date, '%Y-%m-%d')
+
+    if not args.end_date:
+        end_date = last_sync - datetime.timedelta(days=1)
+    else:
+        end_date = datetime.datetime.strptime(args.end_date, '%Y-%m-%d')
+        if end_date > last_sync:
+            logging.debug(
+                'Provided end_date is later than last sync date, '
+                'using last sync date instead')
+            end_date = last_sync - datetime.timedelta(days=1)
 
     fh = open(args.output, 'a')
 
@@ -153,20 +189,24 @@ if __name__ == '__main__':
         'calories', 'steps', 'distance',
         'minutesSedentary', 'minutesLightlyActive',
         'minutesFairlyActive', 'minutesVeryActive', 'activityCalories']
-    
+
     # Note: This will make len(activities) API calls
     for activity in activities:
-        summary[activity] = fbs.get_activity_summary_date_range(activity, start_date, end_date)
+        summary[activity] = fbs.get_activity_summary_date_range(activity,
+                                                                start_date,
+                                                                end_date)
 
     for dt in dateutil.rrule.rrule(dateutil.rrule.DAILY,
                                    dtstart=start_date, until=end_date):
         day = dt.date().isoformat()
-        logdate = (
-            datetime.datetime.combine(dt.date(), datetime.time.max).isoformat())
-        logging.debug('Processing date: %s' % day)
+
+        # Log it as the microsecond before midnight since that's the end of day
+        logdate = datetime.datetime.combine(dt.date(), datetime.time.max)
+        logdate = logdate.isoformat()
         logline = '%s' % logdate
         for activity in activities:
             logline = '%s, %s=%s' % (logline, activity, summary[activity][day])
+        logging.debug(logline)
         fh.write(logline + '\n')
 
     fh.close()
