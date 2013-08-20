@@ -178,6 +178,10 @@ if __name__ == '__main__':
         fbs.get_user_keys(args.consumer_key, args.consumer_secret)
         exit()
 
+    if not args.user_key or not args.user_secret:
+        parser.print_help()
+        exit()
+
     fbs.login(args.consumer_key, args.consumer_secret,
               args.user_key, args.user_secret)
     user_id = fbs.get_user_id()
