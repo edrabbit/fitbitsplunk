@@ -30,6 +30,11 @@ class FitBitSplunk():
             self.user_profile['memberSince'], '%Y-%m-%d')
         return dt
 
+    def get_user_id(self):
+        if not self.user_profile:
+            self.get_profile()
+        return self.user_profile['encodedId']
+
     def login(self, consumer_key, consumer_secret, user_key, user_secret,
               get_profile=True):
         fb = fitbit.Fitbit(consumer_key, consumer_secret,
@@ -123,6 +128,8 @@ class FitBitSplunk():
         return last_sync_dt
 
     def get_last_log_date(self, logfile):
+        if not os.path.exists(logfile):
+            return None
         last_line = tailer.tail(open(logfile), 1)
         if last_line:
             last_line = last_line[0]
@@ -152,7 +159,7 @@ if __name__ == '__main__':
     fbs = FitBitSplunk()
     fbs.login(args.consumer_key, args.consumer_secret,
               args.user_key, args.user_secret)
-
+    user_id = fbs.get_user_id()
 
     # TODO(ed): Modify these based on sync date or assume user knows best?
     # If a start or end date is not specified, use Fitbit's memberSince
@@ -181,7 +188,7 @@ if __name__ == '__main__':
                 'using last sync date instead')
             end_date = last_sync - datetime.timedelta(days=1)
 
-    fh = open(args.output, 'a')
+    fh = open(args.output, 'a+')
 
     summary = {}
     # leaving out floors and elevation here because I don't have it
@@ -203,7 +210,7 @@ if __name__ == '__main__':
         # Log it as the microsecond before midnight since that's the end of day
         logdate = datetime.datetime.combine(dt.date(), datetime.time.max)
         logdate = logdate.isoformat()
-        logline = '%s' % logdate
+        logline = '%s, encodedId=%s' % (logdate, user_id)
         for activity in activities:
             logline = '%s, %s=%s' % (logline, activity, summary[activity][day])
         logging.debug(logline)
