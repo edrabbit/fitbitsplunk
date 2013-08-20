@@ -178,7 +178,9 @@ if __name__ == '__main__':
     if args.get_user_keys:
         if not args.consumer_key or not args.consumer_secret:
             print('ERROR: Consumer Key and Consumer Secret are required in '
-                  'order to fetch user key/secret. Exiting')
+                  'order to fetch user key/secret.\n'
+                  'They can be retrieved from: https://dev.fitbit.com/apps\n'
+                  'Exiting')
             exit(errno.EINVAL)
         fbs.get_user_keys(args.consumer_key, args.consumer_secret)
         exit()

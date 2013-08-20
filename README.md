@@ -11,6 +11,20 @@ This is still very much a work in progress. Pardon the cruft. The "intraday"
 branch is attempts at doing minute resolution but requires access to the
 Fitbit Partner API, which is available upon request.
 
+If this is your first time using it:
+1. Register an app at https://dev.fitbit.com/apps/new
+2. Retrieve the consumer key and the consumer secret
+3. Run the following to authorize your account:
+
+    python fitbitsplunk.py --get_user_keys --consumer_key YOUR_CONSUMER_KEY --consumer_secret YOUR_CONSUMER_SECRET
+4. Follow the instructions
+5. Save your user_key and user_secret
+6. Run the following to fetch all data:
+
+    python fitbitsplunk.py --consumer_key YOUR_CONSUMER_KEY --consumer_secret YOUR_CONSUMER_SECRET --user_key YOUR_USER_KEY --user_secret YOUR_USER_SECRET --output PATH_TO_OUTPUT_FILE
+
+
+
 Requirements
 -------------
 Uses python-fitbit library
