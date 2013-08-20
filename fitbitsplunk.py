@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import dateutil.rrule
+import errno
 import logging
 import os
 import pytz
@@ -175,12 +176,17 @@ if __name__ == '__main__':
 
     fbs = FitBitSplunk()
     if args.get_user_keys:
+        if not args.consumer_key or not args.consumer_secret:
+            print('ERROR: Consumer Key and Consumer Secret are required in '
+                  'order to fetch user key/secret. Exiting')
+            exit(errno.EINVAL)
         fbs.get_user_keys(args.consumer_key, args.consumer_secret)
         exit()
 
     if not args.user_key or not args.user_secret:
+        print('ERROR: User Key and User Secret are required. Exiting.')
         parser.print_help()
-        exit()
+        exit(errno.EINVAL)
 
     fbs.login(args.consumer_key, args.consumer_secret,
               args.user_key, args.user_secret)
