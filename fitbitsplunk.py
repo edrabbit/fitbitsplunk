@@ -250,7 +250,9 @@ if __name__ == '__main__':
         # Log it as the microsecond before midnight since that's the end of day
         logdate = datetime.datetime.combine(dt.date(), datetime.time.max)
         logdate = logdate.isoformat()
-        logline = '%s, encodedId=%s' % (logdate, user_id)
+        logline = '%s, name="%s", nickname="%s", encodedId=%s'\
+                  % (logdate, fbs.user_profile['fullName'],
+                     fbs.user_profile['nickname'], user_id)
         for activity in activities:
             logline = '%s, %s=%s' % (logline, activity, summary[activity][day])
         logging.debug(logline)
