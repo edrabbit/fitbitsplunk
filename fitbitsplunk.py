@@ -5,7 +5,6 @@ import logging
 import os
 import pytz
 
-import pickle  # For development
 import tailer
 
 import fbs_settings
@@ -18,6 +17,21 @@ class FitBitSplunk():
 
     def __init__(self):
         pass
+
+    def get_user_keys(self, consumer_key, consumer_secret):
+        logging.info('Processing OAuth keys...')
+        client = fitbit.FitbitOauthClient(consumer_key, consumer_secret)
+
+        # get request token
+        token = client.fetch_request_token()
+        print("Please go to this url in a browser to authorize: %s"
+                    % client.authorize_token_url(token))
+        verifier = raw_input('\nPlease enter your returned PIN: ')
+        # get access token
+        token = client.fetch_access_token(token, verifier)
+        print('Here are your necessary credentials:')
+        print('--user_key %s --user_secret %s' % (str(token.key),
+                                                  str(token.secret)))
 
     def get_profile(self):
         user = self.fb.user_profile_get()
@@ -154,9 +168,16 @@ if __name__ == '__main__':
                         default='./output.log')
     parser.add_argument('--start_date', type=str, help='Date to start')
     parser.add_argument('--end_date', type=str, help='Date to stop')
+    parser.add_argument('--get_user_keys', action='store_true',
+                        help='Just fetch user keys. aka Poor Man\'s OAuth')
     args = parser.parse_args()
 
+
     fbs = FitBitSplunk()
+    if args.get_user_keys:
+        fbs.get_user_keys(args.consumer_key, args.consumer_secret)
+        exit()
+
     fbs.login(args.consumer_key, args.consumer_secret,
               args.user_key, args.user_secret)
     user_id = fbs.get_user_id()
@@ -173,6 +194,7 @@ if __name__ == '__main__':
         if last_log_date:
             start_date = datetime.datetime.strptime(last_log_date, '%Y-%m-%d')
             start_date = start_date + datetime.timedelta(days=1)
+            logging.debug('last log date=%s' % last_log_date)
         else:
             start_date = fbs.get_join_date()
     else:
@@ -187,6 +209,12 @@ if __name__ == '__main__':
                 'Provided end_date is later than last sync date, '
                 'using last sync date instead')
             end_date = last_sync - datetime.timedelta(days=1)
+
+    logging.debug('start_date=%s, end_date=%s' % (start_date, end_date))
+    if start_date > end_date:
+        logging.debug(
+            'start date is after end date, meaning we are up to date')
+        exit()
 
     fh = open(args.output, 'a+')
 
