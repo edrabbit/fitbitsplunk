@@ -1,4 +1,6 @@
+import argparse
 import datetime
+import dateutil.rrule
 import logging
 import os
 import pytz
@@ -27,6 +29,31 @@ class FitBitSplunk():
         self.fb = fb
         if get_profile:
             self.get_profile()
+
+    def _dt_to_datestring(self, dt):
+        if isinstance(dt, datetime.datetime):
+            return dt.date().isoformat()
+
+    def get_activity_summary_date_range(self, activity, start_date, end_date,
+                                        format='json'):
+        """See https://wiki.fitbit.com/display/API/API-Get-Time-Series for
+         valid activities"""
+        start_date = self._dt_to_datestring(start_date)
+        end_date = self._dt_to_datestring(end_date)
+        url = ('%s/%s/user/%s/activities/%s/date/%s/%s.%s'
+               % (self.fb.API_ENDPOINT, self.fb.API_VERSION, '-',
+               activity, start_date, end_date, format))
+        summary = self.fb.make_request(url=url)
+        return self._sort_summary_into_dates(summary['activities-%s' % activity])
+
+    def _sort_summary_into_dates(self, summary):
+        # Summary is a list
+        # Make sure dates are in order
+        #sd = sorted(summary, key=lambda k: k['dateTime'])
+        foo = {}
+        for x in summary:
+            foo[x['dateTime']] = x['value']
+        return foo
 
     def get_one_day(self, day):
         url = ('%s/%s/user/%s/activities/steps/date/%s/1d.json' %
@@ -91,49 +118,56 @@ class FitBitSplunk():
         return last_sync_dt
 
 if __name__ == '__main__':
-    # TODO(ed): What this should really be doing is:
+
+    parser = argparse.ArgumentParser(description='Fetch Fitbit data via API')
+    parser.add_argument('--user_key', type=str, help='Your user key',
+                        default=fbs_settings.USER_KEY)
+    parser.add_argument('--user_secret', type=str, help='Your secret key',
+                        default=fbs_settings.USER_SECRET)
+    parser.add_argument('--consumer_key', type=str, help='App consumer key',
+                        default=fbs_settings.CONSUMER_KEY)
+    parser.add_argument('--consumer_secret', type=str,
+                        help='App consumer secret',
+                        default=fbs_settings.CONSUMER_SECRET)
+    parser.add_argument('--output', type=str, help='Output filepath',
+                        default='./output.log')
+    parser.add_argument('--start_date', type=str, help='Date to start')
+    parser.add_argument('--end_date', type=str, help='Date to stop')
+    args = parser.parse_args()
+
     fbs = FitBitSplunk()
-    fbs.login(fbs_settings.CONSUMER_KEY, fbs_settings.CONSUMER_SECRET,
-              fbs_settings.USER_KEY, fbs_settings.USER_SECRET)
-    # TODO(ed): Get the last device sync time
-    fbs.get_last_sync_time()
-    # TODO(ed): Compare to the last downloaded date
-    # TODO(ed): Download all days between last downloaded date and last device
-    #   sync time
-    # TODO(ed): Do NOT download today's data to make it easy. But when we do
-    #   want to make it hourly, we need to make sure we're appending to the
-    #   file and not overwriting it
-    # TODO(ed): Need to make a backfill script that will collect the user's
-    #   history without going over the rate limit
+    fbs.login(args.consumer_key, args.consumer_secret,
+              args.user_key, args.user_secret)
+    last_sync = fbs.get_last_sync_time()
 
+    # TODO(ed): Modify these based on sync date or assume user knows best?
+    # Maybe this should also compare end_date to last sync date?
+    start_date = datetime.datetime.strptime(args.start_date, '%Y-%m-%d')
+    end_date = datetime.datetime.strptime(args.end_date, '%Y-%m-%d')
 
-    #my_day = get_one_day(fb, '2013-01-19')
-    #save_one_day_to_file(my_day, '2013-01-19.pk')
+    fh = open(args.output, 'a')
 
-    #user_profile = fb.user_profile_get()
-    user_profile = pickle.load(open('user_profile.pk', 'rb'))  # For dev
-    user_timezone = user_profile['user']['timezone']
+    summary = {}
+    # leaving out floors and elevation here because I don't have it
+    activities = [
+        'calories', 'steps', 'distance',
+        'minutesSedentary', 'minutesLightlyActive',
+        'minutesFairlyActive', 'minutesVeryActive', 'activityCalories']
+    
+    # Note: This will make len(activities) API calls
+    for activity in activities:
+        summary[activity] = fbs.get_activity_summary_date_range(activity, start_date, end_date)
 
-#    fb = None #for development
-#    one_day_to_key_value(fb, '2013-01-19', user_timezone)
-    day_to_fetch = '2013-01-22'
-    fbs.one_day_to_key_value(fb, day_to_fetch,
-                             output_path=('%s.txt' % day_to_fetch),
-                             user_timezone=user_timezone)
+    for dt in dateutil.rrule.rrule(dateutil.rrule.DAILY,
+                                   dtstart=start_date, until=end_date):
+        day = dt.date().isoformat()
+        logdate = (
+            datetime.datetime.combine(dt.date(), datetime.time.max).isoformat())
+        logging.debug('Processing date: %s' % day)
+        logline = '%s' % logdate
+        for activity in activities:
+            logline = '%s, %s=%s' % (logline, activity, summary[activity][day])
+        fh.write(logline + '\n')
+
+    fh.close()
     exit()
-
-
-#    one_day = load_one_day_from_file('%s/%s' % (os.getcwd(), '2013-01-19.pk'))
-#    logging.info('Loaded one day')
-#    summary = one_day['activities-steps'][0]
-#    logging.info('Statistics for %s' % summary['dateTime'])
-#    logging.info('Number of steps for the day: %s' % summary['value'])
-#    logging.info('Minute by minute: %s' % one_day['activities-steps-intraday']['dataset'])
-#    for minute in one_day['activities-steps-intraday']['dataset']:
-#        logging.info('%s: %s' % (minute['time'], minute['value']))
-    #user_profile = fb.user_profile_get()
-    #logging.info('User profile: %s', user_profile)
-    #friends = fb.get_friends()
-    #logging.info('Friends: %s', friends)
-#    for minute in one_day.activities-steps-intraday.dataset:
-#        logging.info('%s: %s' % (minute.time, minute.value))
